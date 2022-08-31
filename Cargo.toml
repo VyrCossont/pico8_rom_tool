@@ -1,0 +1,10 @@
+[package]
+name = "pico8_rom_tool"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+clap = { version = "3.2.19", features = ["derive"] }
+packed_struct = "0.10.0"
+anyhow = "1.0.63"
