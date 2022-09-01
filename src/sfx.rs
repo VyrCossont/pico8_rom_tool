@@ -1,6 +1,8 @@
 use crate::rom;
 use anyhow;
 use packed_struct::prelude::*;
+use packed_struct::PrimitiveEnum;
+use std::ops::RangeInclusive;
 use std::path::Path;
 
 pub fn dump(path: &Path) -> anyhow::Result<()> {
@@ -103,7 +105,7 @@ impl Sfx {
     pub fn enabled(&self) -> bool {
         self.notes
             .iter()
-            .fold(true, |acc, x| acc && u8::from(x.volume) > 0)
+            .fold(true, |acc, x| acc && u8::from(x.volume()) > 0)
     }
 }
 
@@ -156,27 +158,67 @@ impl Switches {
 }
 
 /// See https://www.lexaloffle.com/dl/docs/pico-8_manual.html#SFX_Editor
+/// All the accessors are workarounds for https://github.com/hashmismatch/packed_struct.rs/issues/92
 #[derive(PackedStruct, Debug, Default)]
-#[packed_struct(size_bytes = "2", bit_numbering = "lsb0")]
+#[packed_struct(size_bytes = "2", endian = "lsb")]
 pub struct Note {
-    #[packed_field(bits = "0..=5")]
-    pub pitch: Integer<u8, packed_bits::Bits<6>>,
-    #[packed_field(bits = "6..=8")]
-    waveform: Integer<u8, packed_bits::Bits<3>>,
-    #[packed_field(bits = "9..=11")]
-    pub volume: Integer<u8, packed_bits::Bits<3>>,
-    #[packed_field(bits = "12..=14", ty = "enum")]
-    pub effect: Effect,
-    #[packed_field(bits = "15")]
-    sfx_instrument: bool,
+    packed: u16,
 }
 
 impl Note {
+    fn mask(bits: &RangeInclusive<u8>) -> u16 {
+        ((1u16 << bits.len()) - 1u16) << bits.start()
+    }
+
+    fn shift(bits: &RangeInclusive<u8>) -> u8 {
+        *bits.start()
+    }
+
+    fn read(&self, bits: &RangeInclusive<u8>) -> u8 {
+        ((self.packed & Self::mask(bits)) >> Self::shift(bits)) as u8
+    }
+
+    fn write(&mut self, bits: &RangeInclusive<u8>, val: u8) {
+        self.packed |= Self::mask(bits) & ((val as u16) << Self::shift(bits))
+    }
+
+    const PITCH_BITS: RangeInclusive<u8> = 0..=5;
+    const WAVEFORM_BITS: RangeInclusive<u8> = 6..=8;
+    const VOLUME_BITS: RangeInclusive<u8> = 9..=11;
+    const EFFECT_BITS: RangeInclusive<u8> = 12..=14;
+    const SFX_INSTRUMENT_BITS: RangeInclusive<u8> = 15..=15;
+
+    pub fn pitch(&self) -> Integer<u8, packed_bits::Bits<6>> {
+        Integer::from(self.read(&Self::PITCH_BITS))
+    }
+
+    pub fn set_pitch(&mut self, val: Integer<u8, packed_bits::Bits<6>>) {
+        self.write(&Self::PITCH_BITS, u8::from(val));
+    }
+
+    pub fn volume(&self) -> Integer<u8, packed_bits::Bits<3>> {
+        Integer::from(self.read(&Self::VOLUME_BITS))
+    }
+
+    pub fn set_volume(&mut self, val: Integer<u8, packed_bits::Bits<3>>) {
+        self.write(&Self::VOLUME_BITS, u8::from(val));
+    }
+
+    pub fn effect(&self) -> Effect {
+        Effect::from_primitive(self.read(&Self::EFFECT_BITS)).expect("Impossible effect number")
+    }
+
+    pub fn set_effect(&mut self, val: Effect) {
+        self.write(&Self::EFFECT_BITS, val.to_primitive());
+    }
+
     pub fn instrument(&self) -> Instrument {
-        if self.sfx_instrument {
-            Instrument::Sfx(self.waveform)
+        let sfx_instrument = self.read(&Self::SFX_INSTRUMENT_BITS) == 1;
+        let waveform = self.read(&Self::WAVEFORM_BITS);
+        if sfx_instrument {
+            Instrument::Sfx(Integer::from(waveform))
         } else {
-            match u8::from(self.waveform) {
+            match waveform {
                 0 => Instrument::Triangle,
                 1 => Instrument::TiltedSaw,
                 2 => Instrument::Saw,
@@ -191,21 +233,23 @@ impl Note {
     }
 
     pub fn set_instrument(&mut self, val: Instrument) {
-        self.sfx_instrument = match val {
-            Instrument::Sfx(_) => true,
-            _ => false,
+        let sfx_instrument = match val {
+            Instrument::Sfx(_) => 1,
+            _ => 0,
         };
-        self.waveform = match val {
-            Instrument::Sfx(waveform) => waveform,
-            Instrument::Triangle => Integer::from(0),
-            Instrument::TiltedSaw => Integer::from(1),
-            Instrument::Saw => Integer::from(2),
-            Instrument::Square => Integer::from(3),
-            Instrument::Pulse => Integer::from(4),
-            Instrument::Organ => Integer::from(5),
-            Instrument::Noise => Integer::from(6),
-            Instrument::Phaser => Integer::from(7),
+        self.write(&Self::SFX_INSTRUMENT_BITS, sfx_instrument);
+        let waveform = match val {
+            Instrument::Sfx(waveform) => u8::from(waveform),
+            Instrument::Triangle => 0,
+            Instrument::TiltedSaw => 1,
+            Instrument::Saw => 2,
+            Instrument::Square => 3,
+            Instrument::Pulse => 4,
+            Instrument::Organ => 5,
+            Instrument::Noise => 6,
+            Instrument::Phaser => 7,
         };
+        self.write(&Self::WAVEFORM_BITS, waveform);
     }
 }
 

@@ -2,6 +2,7 @@ mod music;
 mod rom;
 mod sfx;
 
+use crate::sfx::Note;
 use anyhow;
 use clap::{Parser, Subcommand, ValueEnum};
 use packed_struct::prelude::*;
