@@ -1,11 +1,10 @@
 mod music;
 mod rom;
 mod sfx;
+mod translate;
 
-use crate::sfx::Note;
 use anyhow;
 use clap::{Parser, Subcommand, ValueEnum};
-use packed_struct::prelude::*;
 use std::path::PathBuf;
 
 /// Tool for working with resources in PICO-8 ROMs.
@@ -22,6 +21,11 @@ enum Commands {
     Dump {
         #[clap(value_enum)]
         section: Section,
+        #[clap(value_parser)]
+        path: PathBuf,
+    },
+    /// Translate PICO-8 music and sfx to WASM-4 code and data.
+    Translate {
         #[clap(value_parser)]
         path: PathBuf,
     },
@@ -44,6 +48,7 @@ fn main() -> anyhow::Result<()> {
             section: Section::Sfx,
             path,
         } => sfx::dump(path.as_path())?,
+        Commands::Translate { path } => translate::translate(path.as_path())?,
     }
     Ok(())
 }

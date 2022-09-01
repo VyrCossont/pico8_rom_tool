@@ -2,6 +2,7 @@ use crate::rom;
 use anyhow;
 use packed_struct::prelude::*;
 use packed_struct::PrimitiveEnum;
+use std::fmt::{Display, Formatter};
 use std::ops::RangeInclusive;
 use std::path::Path;
 
@@ -188,11 +189,11 @@ impl Note {
     const EFFECT_BITS: RangeInclusive<u8> = 12..=14;
     const SFX_INSTRUMENT_BITS: RangeInclusive<u8> = 15..=15;
 
-    pub fn pitch(&self) -> Integer<u8, packed_bits::Bits<6>> {
-        Integer::from(self.read(&Self::PITCH_BITS))
+    pub fn pitch(&self) -> Pitch {
+        Pitch::from(self.read(&Self::PITCH_BITS))
     }
 
-    pub fn set_pitch(&mut self, val: Integer<u8, packed_bits::Bits<6>>) {
+    pub fn set_pitch(&mut self, val: Pitch) {
         self.write(&Self::PITCH_BITS, u8::from(val));
     }
 
@@ -279,4 +280,58 @@ pub enum Effect {
     FadeOut = 5,
     ArpeggioFast = 6,
     ArpeggioSlow = 7,
+}
+
+pub struct Pitch(u8);
+
+/// MIDI note number and frequency assume MIDI Tuning Standard (12-tone equal temperament, middle C is C4).
+impl Pitch {
+    /// ⚠️ PICO-8 octave 2 is MTS octave 4. This returns the note's PICO-8 octave.
+    pub fn octave(&self) -> u8 {
+        self.0 / 12
+    }
+
+    const NAMES: [&'static str; 12] = [
+        "C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B",
+    ];
+
+    pub fn name(&self) -> &str {
+        Self::NAMES[(self.0 % 12) as usize]
+    }
+
+    pub fn midi_note_number(&self) -> u8 {
+        self.0 + 36
+    }
+
+    pub fn frequency(&self) -> u32 {
+        (440.0 * 2.0f64.powf((self.midi_note_number() as f64 - 69.0) / 12.0)) as u32
+    }
+}
+
+impl From<u8> for Pitch {
+    fn from(val: u8) -> Self {
+        if val > 63 {
+            panic!("PICO-8 cannot represent notes above D♯5");
+        }
+        Pitch(val)
+    }
+}
+
+impl From<Pitch> for u8 {
+    fn from(val: Pitch) -> Self {
+        val.0
+    }
+}
+
+impl Display for Pitch {
+    /// Shows note with PICO-8 octave.
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}{} ({} Hz)",
+            self.name(),
+            self.octave(),
+            self.frequency()
+        )
+    }
 }
