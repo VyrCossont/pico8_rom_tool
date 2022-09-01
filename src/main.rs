@@ -1,8 +1,10 @@
 mod music;
 mod rom;
+mod sfx;
 
 use anyhow;
 use clap::{Parser, Subcommand, ValueEnum};
+use packed_struct::prelude::*;
 use std::path::PathBuf;
 
 /// Tool for working with resources in PICO-8 ROMs.
@@ -32,7 +34,6 @@ enum Section {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    println!("CLI: {:#?}", cli);
     match cli.command {
         Commands::Dump {
             section: Section::Music,
@@ -41,7 +42,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Dump {
             section: Section::Sfx,
             path,
-        } => todo!(),
+        } => sfx::dump(path.as_path())?,
     }
     Ok(())
 }
