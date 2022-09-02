@@ -106,7 +106,7 @@ impl Sfx {
     pub fn enabled(&self) -> bool {
         self.notes
             .iter()
-            .fold(true, |acc, x| acc && u8::from(x.volume()) > 0)
+            .fold(false, |acc, x| acc || u8::from(x.volume()) > 0)
     }
 }
 
@@ -269,7 +269,7 @@ pub enum Instrument {
 }
 
 /// See https://www.lexaloffle.com/dl/docs/pico-8_manual.html#Effects
-#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, Default)]
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, Default, PartialEq)]
 pub enum Effect {
     #[default]
     None = 0,

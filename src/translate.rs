@@ -1,30 +1,108 @@
 use crate::music::Section as MusicSection;
 use crate::rom;
-use crate::sfx::Instrument;
 use crate::sfx::Section as SfxSection;
+use crate::sfx::{Effect, Instrument, Sfx};
 use anyhow;
 use packed_struct::prelude::*;
 use std::path::Path;
 
 pub fn translate(path: &Path) -> anyhow::Result<()> {
     let section = rom::read_section::<MusicSfx>(path, 0x3100)?;
-    let sfx = &section.sfx.sfxes[0];
-    let frames_per_note = match sfx.speed {
-        0 => return Err(anyhow::anyhow!("PICO-8 speed 0 isn't representable in the PICO-8 tracker and you probably shouldn't use it")),
-        s if s % 2 != 0 => return Err(anyhow::anyhow!("Odd PICO-8 speeds map to non-integer numbers of WASM-4 frames, and cannot be represented")),
+
+    let mut wasm4sfxes = Vec::with_capacity(section.sfx.sfxes.len());
+    for (i, sfx) in section.sfx.sfxes.iter().enumerate() {
+        match map_sfx(sfx) {
+            Ok(wasm4sfx) => wasm4sfxes.push(wasm4sfx),
+            Err(e) => eprintln!("Skipping SFX {}: {}", i, e),
+        }
+    }
+
+    // TODO: figure out much better way to emit this code
+    println!("const SFX_DATA: &[Sfx] = &[");
+    for wasm4sfx in wasm4sfxes {
+        println!("    Sfx{{");
+        println!("        frames_per_tone: {},", wasm4sfx.frames_per_tone);
+        if let Some(loop_restart) = wasm4sfx.loop_restart {
+            println!("        loop_restart: Some({}),", loop_restart);
+        } else {
+            println!("        loop_restart: None,");
+        }
+        println!("        tones: &[");
+        for tone in wasm4sfx.tones {
+            println!("            Tone{{");
+            println!("                frequency: {},", tone.frequency);
+            println!("                duration: {},", tone.duration);
+            println!("                volume: {},", tone.volume);
+            println!("                flags: {},", tone.flags);
+            println!("            }},");
+        }
+        println!("        ],");
+        println!("    }},");
+    }
+    println!("];");
+    Ok(())
+}
+
+fn map_sfx(sfx: &Sfx) -> anyhow::Result<Wasm4Sfx> {
+    // TODO: we can't actually skip every silent SFX,
+    //  as they might be used by music as spacers.
+    //  But for now, skip them so we don't have empty SFXes everywhere.
+    if !sfx.enabled() {
+        anyhow::bail!("No notes in this SFX");
+    }
+
+    // Check preconditions for entire SFX.
+    let frames_per_tone = match sfx.speed {
+        0 => anyhow::bail!("PICO-8 speed 0 isn't representable in the PICO-8 tracker and you probably shouldn't use it"),
+        s if s % 2 != 0 => anyhow::bail!("Odd PICO-8 speeds map to non-integer numbers of WASM-4 frames, and cannot be represented"),
         s => s / 2,
     };
-    let len: usize = match (sfx.loop_start, sfx.loop_end) {
-        (0, 0) => 32,
-        (x, 0) => x as usize,
-        _ => todo!("Looping sfx are not supported yet"),
+    if sfx.switches.buzz {
+        anyhow::bail!("Unsupported SFX filter: buzz");
+    }
+    if sfx.switches.noiz {
+        anyhow::bail!("Unsupported SFX filter: noiz");
+    }
+    if sfx.switches.detune() != 0 {
+        anyhow::bail!("Unsupported SFX filter: detune");
+    }
+    if sfx.switches.reverb() != 0 {
+        anyhow::bail!("Unsupported SFX filter: reverb");
+    }
+    if sfx.switches.dampen() != 0 {
+        anyhow::bail!("Unsupported SFX filter: dampen");
+    }
+
+    // Get SFX size and optional loop restart point.
+    let (loop_restart, size) = match (sfx.loop_start, sfx.loop_end) {
+        (0, 0) => (None, sfx.notes.len()),
+        (size, 0) => (None, size as usize),
+        (loop_restart, size) => (Some(loop_restart as usize), size as usize),
     };
-    let tones = sfx.notes[..len]
+
+    // Check preconditions for representable notes.
+    for note in sfx.notes[..size].iter() {
+        match note.instrument() {
+            Instrument::Triangle => (),
+            Instrument::Pulse => (),
+            Instrument::Square => (),
+            Instrument::Noise => (),
+            instrument => anyhow::bail!("Unsupported instrument: {:#?}", instrument),
+        }
+        if note.effect() != Effect::None {
+            anyhow::bail!("Unsupported effect: {:#?}", note.effect());
+        }
+    }
+
+    let tones = sfx.notes[..size]
         .iter()
         .map(|note| Wasm4Tone {
+            // TODO: emulate drop effect using frequency sweep?
             frequency: note.pitch().frequency(),
-            duration: frames_per_note as u32,
+            // TODO: emulate other filters/effects using ADSR params?
+            duration: frames_per_tone as u32,
             volume: (u8::from(note.volume()) as u32) * 100 / 7,
+            // TODO: specify channel to use for pulse/square tones
             flags: match note.instrument() {
                 Instrument::Triangle => 0b10,
                 // pulse channel 1, default duty cycle
@@ -32,18 +110,16 @@ pub fn translate(path: &Path) -> anyhow::Result<()> {
                 // pulse channel 2, 50% duty cycle
                 Instrument::Square => 0b10_01,
                 Instrument::Noise => 0b11,
+                // We checked for this above.
                 instrument => panic!("Unsupported instrument: {:#?}", instrument),
             },
         })
         .collect::<Vec<_>>();
-    let wasm4sfx = Wasm4Sfx {
-        frames_per_tone: frames_per_note,
-        frame_counter: 0,
-        tone_counter: 0,
-        tones: tones.as_slice(),
-    };
-    println!("{:#?}", wasm4sfx);
-    Ok(())
+    Ok(Wasm4Sfx {
+        frames_per_tone,
+        loop_restart,
+        tones,
+    })
 }
 
 // Section type aliases are necessary because PackedStruct can't handle qualified field types.
@@ -57,11 +133,10 @@ pub struct MusicSfx {
 }
 
 #[derive(Debug)]
-struct Wasm4Sfx<'a> {
+struct Wasm4Sfx {
     frames_per_tone: u8,
-    frame_counter: u8,
-    tone_counter: u8,
-    tones: &'a [Wasm4Tone],
+    loop_restart: Option<usize>,
+    tones: Vec<Wasm4Tone>,
 }
 
 /// Parameters for a WASM-4 `tone(…)` call.

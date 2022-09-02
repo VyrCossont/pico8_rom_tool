@@ -121,7 +121,9 @@ impl Frame {
     }
 
     pub fn enabled(&self) -> bool {
-        self.channels.iter().fold(true, |acc, x| acc && x.enabled())
+        self.channels
+            .iter()
+            .fold(false, |acc, x| acc || x.enabled())
     }
 }
 
