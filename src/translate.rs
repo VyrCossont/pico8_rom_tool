@@ -1,3 +1,4 @@
+use crate::music::Pattern;
 use crate::music::Section as MusicSection;
 use crate::rom;
 use crate::sfx::Section as SfxSection;
@@ -17,7 +18,18 @@ pub fn translate(path: &Path) -> anyhow::Result<()> {
         }
     }
 
+    let mut wasm4patterns = Vec::with_capacity(section.music.patterns.len());
+    for (i, pattern) in section.music.patterns.iter().enumerate() {
+        match map_music(pattern) {
+            Ok(wasm4pattern) => wasm4patterns.push(wasm4pattern),
+            Err(e) => eprintln!("Skipping pattern {}: {}", i, e),
+        }
+    }
+
     // TODO: figure out much better way to emit this code
+    println!("//region SFX and music data");
+    println!();
+
     println!("const SFX_DATA: &[Sfx] = &[");
     for wasm4sfx in wasm4sfxes {
         println!("    Sfx{{");
@@ -40,7 +52,46 @@ pub fn translate(path: &Path) -> anyhow::Result<()> {
         println!("    }},");
     }
     println!("];");
+    println!();
+
+    println!("const MUSIC_DATA: &[Pattern] = &[");
+    for wasm4pattern in wasm4patterns {
+        println!("    Pattern{{");
+        println!("        loop_start: {},", wasm4pattern.loop_start);
+        println!("        loop_back: {},", wasm4pattern.loop_back);
+        println!("        stop_at_end: {},", wasm4pattern.stop_at_end);
+        println!("        sfxes: &[");
+        for sfx_id in wasm4pattern.sfx_ids {
+            println!("            &SFX_DATA[{}],", sfx_id);
+        }
+        println!("        ],");
+        println!("    }},");
+    }
+    println!("];");
+    println!();
+
+    println!("//endregion SFX and music data");
     Ok(())
+}
+
+fn map_music(pattern: &Pattern) -> anyhow::Result<Wasm4Pattern> {
+    // TODO: should we skip empty patterns? Does PICO-8 actually play them?
+    if !pattern.enabled() {
+        anyhow::bail!("No channels in this pattern");
+    }
+
+    // TODO: check for inter-channel instrument conflicts
+
+    Ok(Wasm4Pattern {
+        loop_start: pattern.loop_start(),
+        loop_back: pattern.loop_back(),
+        stop_at_end: pattern.stop_at_end(),
+        sfx_ids: pattern
+            .channels
+            .iter()
+            .map(|c| u8::from(c.sfx_id) as usize)
+            .collect(),
+    })
 }
 
 fn map_sfx(sfx: &Sfx) -> anyhow::Result<Wasm4Sfx> {
@@ -147,4 +198,12 @@ struct Wasm4Tone {
     duration: u32,
     volume: u32,
     flags: u32,
+}
+
+#[derive(Debug)]
+struct Wasm4Pattern {
+    loop_start: bool,
+    loop_back: bool,
+    stop_at_end: bool,
+    sfx_ids: Vec<usize>,
 }

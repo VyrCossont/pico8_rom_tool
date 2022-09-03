@@ -11,78 +11,78 @@ pub fn dump(path: &Path) -> anyhow::Result<()> {
 #[derive(PackedStruct, Debug)]
 pub struct Section {
     #[packed_field(element_size_bytes = "4")]
-    pub frames: [Frame; 64],
+    pub patterns: [Pattern; 64],
 }
 
 /// `Default` is only defined for arrays up to size 32.
 impl Default for Section {
     fn default() -> Self {
         Section {
-            frames: [
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
-                Frame::default(),
+            patterns: [
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
+                Pattern::default(),
             ],
         }
     }
@@ -90,34 +90,34 @@ impl Default for Section {
 
 #[derive(PackedStruct, Debug, Default)]
 #[packed_struct()]
-pub struct Frame {
+pub struct Pattern {
     #[packed_field(element_size_bytes = "1")]
     pub channels: [Channel; 4],
 }
 
-impl Frame {
-    pub fn begin_loop(&self) -> bool {
-        self.channels[0].frame_flag
+impl Pattern {
+    pub fn loop_start(&self) -> bool {
+        self.channels[0].pattern_flag
     }
 
     pub fn set_begin_loop(&mut self, val: bool) {
-        self.channels[0].frame_flag = val
+        self.channels[0].pattern_flag = val
     }
 
-    pub fn end_loop(&self) -> bool {
-        self.channels[1].frame_flag
+    pub fn loop_back(&self) -> bool {
+        self.channels[1].pattern_flag
     }
 
     pub fn set_end_loop(&mut self, val: bool) {
-        self.channels[1].frame_flag = val
+        self.channels[1].pattern_flag = val
     }
 
     pub fn stop_at_end(&self) -> bool {
-        self.channels[2].frame_flag
+        self.channels[2].pattern_flag
     }
 
     pub fn set_stop_at_end(&mut self, val: bool) {
-        self.channels[2].frame_flag = val
+        self.channels[2].pattern_flag = val
     }
 
     pub fn enabled(&self) -> bool {
@@ -135,7 +135,7 @@ pub struct Channel {
     #[packed_field(bits = "6")]
     disabled: bool,
     #[packed_field(bits = "7")]
-    frame_flag: bool,
+    pattern_flag: bool,
 }
 
 impl Channel {
